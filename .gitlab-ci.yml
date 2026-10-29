@@ -8,6 +8,7 @@ workflow:
 
 stages:
   - verify
+  - sign
 
 default:
   # Android 34 / build-tools 34.0.0; immutable multi-platform image.
@@ -21,7 +22,7 @@ verify:
   stage: verify
   timeout: 45 minutes
   script:
-    - |
+    - &verify_build |
       set -euo pipefail
       java -version
       sdk_revision=3f924ee6aaface69d9b10e1981f390ee9502b945
@@ -57,3 +58,69 @@ verify:
       - app/build/reports/lint-results-release.html
       - app/build/reports/lint-results-release.xml
       - .sdk-source/build/reports/tests/
+
+main_release:
+  stage: sign
+  timeout: 45 minutes
+  rules:
+    - if: '$CI_SERVER_HOST == "git.tak.gov" && $CI_PROJECT_PATH == "weartak-plugins/weartak-plugin-gotenna" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true"'
+  script:
+    - *verify_build
+    - |
+      set +x
+      set -euo pipefail
+      test "$CI_SERVER_HOST" = "git.tak.gov"
+      test "$CI_PROJECT_PATH" = "weartak-plugins/weartak-plugin-gotenna"
+      test "$CI_PIPELINE_SOURCE" = "push"
+      test "$CI_COMMIT_BRANCH" = "$CI_DEFAULT_BRANCH"
+      test "$CI_COMMIT_REF_PROTECTED" = "true"
+      if [ "${CI_DEBUG_TRACE:-false}" = "true" ]; then
+        echo "ERROR: Production signing refuses debug tracing." >&2
+        exit 1
+      fi
+      for name in WEARTAK_RELEASE_KEYSTORE_B64 RELEASE_STORE_PASSWORD RELEASE_KEY_ALIAS RELEASE_KEY_PASSWORD; do
+        if [ -z "${!name:-}" ]; then
+          echo "ERROR: Missing inherited production signing input: $name" >&2
+          exit 1
+        fi
+      done
+      umask 077
+      mkdir .production-signing
+      trap 'rm -f .production-signing/weartak.keystore .production-signing/signing.properties .production-signing/certificate.txt .production-signing/badging.txt; rmdir .production-signing' EXIT
+      printf '%s' "$WEARTAK_RELEASE_KEYSTORE_B64" | base64 --decode > .production-signing/weartak.keystore
+      printf '%s\n' 'RELEASE_KEYSTORE_FILE=weartak.keystore' > .production-signing/signing.properties
+      export WEARTAK_SIGNING_PROPERTIES="$CI_PROJECT_DIR/.production-signing/signing.properties"
+      export WEARTAK_RELEASE_KEYSTORE_FILE="$CI_PROJECT_DIR/.production-signing/weartak.keystore"
+      export WEARTAK_RELEASE_STORE_PASSWORD="$RELEASE_STORE_PASSWORD"
+      export WEARTAK_RELEASE_KEY_ALIAS="$RELEASE_KEY_ALIAS"
+      export WEARTAK_RELEASE_KEY_PASSWORD="$RELEASE_KEY_PASSWORD"
+      bash ./gradlew --no-daemon :app:assembleRelease
+      apk=app/build/outputs/apk/release/app-release.apk
+      test -f "$apk"
+      tools="${ANDROID_HOME:-$ANDROID_SDK_ROOT}/build-tools/34.0.0"
+      "$tools/apksigner" verify --verbose --print-certs "$apk" > .production-signing/certificate.txt
+      expected=1579b600cd84e619e76a91c2db6b031938c999bc2aad926b9a51ec2b166d348d
+      actual="$(sed -n 's/^Signer #[0-9]* certificate SHA-256 digest: //p' .production-signing/certificate.txt | tr '[:upper:]' '[:lower:]')"
+      if [ "$actual" != "$expected" ]; then
+        echo "ERROR: Release signer does not match Sextant/LACE production certificate." >&2
+        exit 1
+      fi
+      "$tools/aapt" dump badging "$apk" > .production-signing/badging.txt
+      if grep -q '^application-debuggable' .production-signing/badging.txt; then
+        echo "ERROR: Refusing debuggable production APK." >&2
+        exit 1
+      fi
+      mkdir verified-release
+      cp "$apk" verified-release/weartak-plugin-gotenna-release.apk
+      printf '%s\n' "$actual" > verified-release/signer-sha256.txt
+      (cd verified-release && sha256sum weartak-plugin-gotenna-release.apk > SHA256SUMS)
+      rm -f .production-signing/certificate.txt .production-signing/badging.txt
+      echo "Production APK verified against Sextant/LACE signer."
+  after_script:
+    - rm -f .production-signing/weartak.keystore .production-signing/signing.properties .production-signing/certificate.txt .production-signing/badging.txt
+    - if [ -d .production-signing ]; then rmdir .production-signing; fi
+  artifacts:
+    when: on_success
+    expire_in: 30 days
+    paths:
+      - verified-release/

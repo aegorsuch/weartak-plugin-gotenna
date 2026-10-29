@@ -11,6 +11,8 @@ signing.properties
 *.keystore
 app/libs/*.aar
 .sdk-source/
+.production-signing/
+verified-release/
 .DS_Store
 captures/
 .externalNativeBuild/
