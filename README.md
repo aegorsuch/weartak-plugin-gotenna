@@ -68,37 +68,47 @@ build-tools 34.0.0. Java/Kotlin bytecode still targets Java 17.
 Forge builds the same public, commit-pinned SDK as GitHub CI, verifies its checkout,
 runs SDK debug/release unit tests and assemblies, then stages both SDK AARs.
 It runs plugin debug/release unit tests, assemblies and lint. Dependency checkout
-or build failures fail the job; no prebuilt AAR fallback is used. Only JUnit,
-test and lint reports are retained for 14 days. **No APKs, signing files or SDK
-binaries are uploaded, and no release is published**, including on tag pipelines.
+or build failures fail the job; no prebuilt AAR fallback is used. Verification
+retains only JUnit, test and lint reports for 14 days. Signing files and SDK
+binaries are never uploaded. No GitHub release is published.
 
-### Production rolling release blocked
+### Production signing (Sextant/LACE shared key)
+
+After verification passes, `main_release` runs only on protected default-branch
+pushes in the canonical Forge project. It uses the same inherited protected,
+masked `weartak-plugins` group variables as Sextant and LACE:
+`WEARTAK_RELEASE_KEYSTORE_B64`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS`
+and `RELEASE_KEY_PASSWORD`. Missing inputs fail the job; no new key or debug
+fallback is allowed. No variables or credentials are provisioned by this change.
+
+The existing Gradle signing helper is identical to Sextant/LACE. The job decodes
+the approved key into restrictive temporary files, maps credentials into its
+`WEARTAK_RELEASE_*` environment contract, and removes temporary files on exit
+and in `after_script`. Debug tracing is refused. Secrets are not written into
+properties values or passed as command-line arguments.
+
+`apksigner` must verify exactly the production signer pinned by Sextant/LACE:
+
+```text
+1579b600cd84e619e76a91c2db6b031938c999bc2aad926b9a51ec2b166d348d
+```
+
+The job also rejects a debuggable APK. Only after these checks pass does it
+retain `verified-release/` for 30 days: signed APK, SHA256SUMS and public signer
+fingerprint. This establishes signing compatibility with the reference production
+certificate, not device installation, host version compatibility or radio support.
+Unprotected branches, merge requests and tags never run production signing.
+
+### GitHub rolling publisher remains disabled
 
 The intended destination is the personal repository
 [`aegorsuch/weartak-plugin-gotenna`](https://github.com/aegorsuch/weartak-plugin-gotenna),
-not a company repository. No Forge publisher is enabled: existing release signing
-is optional and this checkout contains no production signing material or Forge
-signing setup. Without it, `assembleRelease` produces an unsigned APK, not a
-distributable production release. The GitHub debug prerelease described below
-is not a substitute.
-
-Before adding the protected-tag, fixed-tag rolling-release publisher, an operator
-must provision the existing signing contract on a protected runner:
-`WEARTAK_SIGNING_PROPERTIES` must reference a signing properties file (or an
-ignored root `signing.properties` must exist). It must provide
-`RELEASE_KEYSTORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` and
-`RELEASE_KEY_PASSWORD`; corresponding `WEARTAK_RELEASE_*` environment values can
-override them, but the properties file must still exist. The keystore must use
-the production WearTAK host certificate because binding requires matching
-signatures. Neither credentials nor GitLab variables are created by this change.
-
-Publication also needs a trusted expected production certificate SHA-256 digest,
-protected source-tag policy and an authorized token scoped only to the personal
-destination. A future publisher must require successful verification, validate
-the APK signature and certificate against that trusted digest, reject debug or
-unsigned APKs, and serialize updates to the fixed rolling-release tag/assets.
-Until these prerequisites exist, Forge remains verification-only with no
-GitHub write access.
+not a company repository. No Forge publisher is enabled. A future publisher needs
+separate authorization, a protected source policy, an existing fixed release tag,
+and an authorized token scoped only to the personal destination. It must consume
+only the verified production APK and serialize rolling-release updates. Forge has
+no configured GitHub write step. The GitHub debug prerelease below is not a
+production artifact substitute.
 
 ## GitHub CI and releases
 
