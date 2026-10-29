@@ -173,7 +173,7 @@ def git(*args, env=None):
 
 def sync_source(state, token):
     # Never rewrite personal history or create/move release tags.
-    source = f"https://git.tak.gov/{PROJECT}.git"
+    source = "origin"
     target = f"https://github.com/{REPO}.git"
     latest = git("ls-remote", source, "refs/heads/main").split()
     if not latest or latest[0] != state["source_sha"]:
