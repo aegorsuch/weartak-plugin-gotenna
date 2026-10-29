@@ -1,0 +1,68 @@
+name: Release testing checklist
+
+on:
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Published release tag to test
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  issues: write
+
+concurrency:
+  group: release-testing-${{ inputs.release_tag }}
+  cancel-in-progress: false
+
+jobs:
+  checklist:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Create release testing issue
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b # v7
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag }}
+          RELEASE_TESTER: ${{ vars.RELEASE_TESTER }}
+        with:
+          script: |
+            const tag = process.env.RELEASE_TAG;
+            const { data: release } = await github.rest.repos.getReleaseByTag({
+              ...context.repo, tag,
+            });
+            const title = `Release testing: ${tag}`;
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              ...context.repo, state: 'all', per_page: 100,
+            });
+            if (issues.some(issue => !issue.pull_request && issue.title === title)) {
+              core.info('Release testing checklist already exists.');
+              return;
+            }
+            const tester = (process.env.RELEASE_TESTER || '').trim();
+            await github.rest.issues.create({
+              ...context.repo,
+              title,
+              ...(tester ? { assignees: [tester] } : {}),
+              body: [
+                `Test release: ${release.html_url}`,
+                '',
+                'Development debug APK only; not production signed. Host and plugin certificates must match.',
+                '',
+                '- [ ] Verify attached APK against SHA256SUMS.',
+                '- [ ] Use a development WearTAK host and plugin signed with the same certificate; do not install over production.',
+                '- [ ] Open Plugins > GoTenna and confirm status stays inside WearTAK (no separate activity).',
+                '- [ ] Confirm radio unavailable status explains the vendor SDK/protocol dependency.',
+                '- [ ] Refresh status and confirm the hosted page updates without claiming connection.',
+                '- [ ] Confirm no scan, connect or send controls are advertised.',
+                '- [ ] Check watch text scaling, scrolling, Back navigation and process restart.',
+                '- [ ] Record tested host version, watch model, Android version and results.',
+                '',
+                'Radio transport remains unimplemented; this checklist does not certify radio interoperability.',
+              ].join('\n'),
+            });
