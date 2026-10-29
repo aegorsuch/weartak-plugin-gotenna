@@ -1,0 +1,163 @@
+name: Build and release
+
+on:
+  pull_request:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+jobs:
+  sdk-configuration:
+    runs-on: ubuntu-latest
+    outputs:
+      configured: ${{ steps.sdk.outputs.configured }}
+      repository: ${{ steps.sdk.outputs.repository }}
+      revision: ${{ steps.sdk.outputs.revision }}
+    steps:
+      - name: Check published SDK source configuration
+        id: sdk
+        env:
+          SDK_REPOSITORY: ${{ vars.WEARTAK_SDK_REPOSITORY || 'aegorsuch/weartak-plugin-sdk' }}
+          SDK_REF: ${{ vars.WEARTAK_SDK_REVISION || '3f924ee6aaface69d9b10e1981f390ee9502b945' }}
+        run: |
+          set -euo pipefail
+          if [[ -z "$SDK_REPOSITORY" || -z "$SDK_REF" ]]; then
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::App validation skipped: configure WEARTAK_SDK_REPOSITORY plus WEARTAK_SDK_REVISION. Releases remain blocked."
+            echo "### App validation not run" >> "$GITHUB_STEP_SUMMARY"
+            echo "Set WEARTAK_SDK_REPOSITORY (GitHub owner/repo) and WEARTAK_SDK_REVISION (full commit SHA), and supply WEARTAK_SDK_READ_TOKEN for private SDK sources. No local binary fallback. Tag releases are blocked until app checks run successfully." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ ! "$SDK_REPOSITORY" =~ ^[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+$ ]] ||
+             [[ ! "$SDK_REF" =~ ^[0-9a-fA-F]{40}$ ]]; then
+            echo "::error::Invalid SDK configuration: WEARTAK_SDK_REPOSITORY must be GitHub owner/repo and WEARTAK_SDK_REVISION must be a full published commit SHA with ACTION and v3 support."
+            exit 1
+          fi
+          echo "configured=true" >> "$GITHUB_OUTPUT"
+          echo "repository=$SDK_REPOSITORY" >> "$GITHUB_OUTPUT"
+          echo "revision=$SDK_REF" >> "$GITHUB_OUTPUT"
+
+  verify:
+    needs: sdk-configuration
+    if: needs.sdk-configuration.outputs.configured == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          persist-credentials: false
+      - name: Check out pinned SDK source
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4
+        with:
+          repository: ${{ needs.sdk-configuration.outputs.repository }}
+          ref: ${{ needs.sdk-configuration.outputs.revision }}
+          token: ${{ secrets.WEARTAK_SDK_READ_TOKEN || github.token }}
+          path: .sdk-source
+          persist-credentials: false
+      - name: Verify exact SDK checkout
+        working-directory: .sdk-source
+        env:
+          SDK_REVISION: ${{ needs.sdk-configuration.outputs.revision }}
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "${SDK_REVISION,,}"
+      - uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4
+      - name: Test and build pinned SDK
+        working-directory: .sdk-source
+        run: bash ./gradlew --no-daemon testDebugUnitTest testReleaseUnitTest assembleDebug assembleRelease
+      - name: Stage SDK dependencies
+        run: |
+          mkdir -p app/libs
+          cp .sdk-source/build/outputs/aar/weartak-plugin-sdk-debug.aar app/libs/
+          cp .sdk-source/build/outputs/aar/weartak-plugin-sdk-release.aar app/libs/
+      - name: Test, assemble and lint
+        run: bash ./gradlew --no-daemon :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verification-reports
+          path: |
+            app/build/reports/tests/testDebugUnitTest/
+            app/build/reports/lint-results-debug.*
+            .sdk-source/build/reports/tests/
+          retention-days: 14
+          if-no-files-found: warn
+      - name: Stage debug APK
+        run: |
+          mkdir -p dist
+          cp app/build/outputs/apk/debug/app-debug.apk dist/weartak-plugin-gotenna-debug.apk
+          (cd dist && sha256sum weartak-plugin-gotenna-debug.apk > SHA256SUMS)
+      - name: Upload verified debug APK
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+        with:
+          name: verified-debug-apk
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
+
+  release-requirements:
+    needs: sdk-configuration
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v') && needs.sdk-configuration.outputs.configured != 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Block release without verified SDK
+        run: |
+          echo "::error::Cannot publish APK: configure WEARTAK_SDK_REPOSITORY and WEARTAK_SDK_REVISION (full commit SHA), plus WEARTAK_SDK_READ_TOKEN for private SDK sources, then rerun the tag workflow so app tests/build/lint can pass."
+          exit 1
+
+  release:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    needs: verify
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+        with:
+          name: verified-debug-apk
+          path: dist
+      - name: Publish debug prerelease
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          RELEASE_TAG: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          cd dist
+          sha256sum --check SHA256SUMS
+          cat > release-notes.txt <<'EOF'
+          Development APK, signed with a CI-generated Android debug key. NOT a production-signed release.
+
+          WearTAK binding uses a signature permission: this APK requires a host built with the same signing certificate. CI debug keys are ephemeral; this artifact is not guaranteed to bind to an existing WearTAK installation or update a previous build.
+
+          GoTenna UI runs inside the WearTAK plugin menu. Radio transport is not implemented; no scanning, connection or message transmission is provided.
+
+          Unit tests, debug assembly and Android lint passed before publication. SHA256SUMS verifies the attached debug APK.
+          EOF
+          gh release create "$RELEASE_TAG" \
+            --repo "$GH_REPO" \
+            --verify-tag \
+            --prerelease \
+            --title "GoTenna $RELEASE_TAG (DEBUG - not production signed)" \
+            --notes-file release-notes.txt \
+            weartak-plugin-gotenna-debug.apk SHA256SUMS
+
+  release-testing:
+    needs: release
+    permissions:
+      contents: read
+      issues: write
+    uses: ./.github/workflows/release-testing.yml
+    with:
+      release_tag: ${{ github.ref_name }}
