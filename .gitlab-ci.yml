@@ -1,0 +1,59 @@
+workflow:
+  rules:
+    - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
+    - if: '$CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS && $CI_PIPELINE_SOURCE == "push"'
+      when: never
+    - if: '$CI_COMMIT_BRANCH'
+    - if: '$CI_COMMIT_TAG'
+
+stages:
+  - verify
+
+default:
+  # Android 34 / build-tools 34.0.0; immutable multi-platform image.
+  image: ghcr.io/cirruslabs/android-sdk:34@sha256:1c2e7e9c4490dbc1f85364556aa08e550945e6dffb29baab86d5fe2c7be0773a
+  interruptible: true
+
+variables:
+  GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
+
+verify:
+  stage: verify
+  timeout: 45 minutes
+  script:
+    - |
+      set -euo pipefail
+      java -version
+      sdk_revision=3f924ee6aaface69d9b10e1981f390ee9502b945
+      git init .sdk-source
+      git -C .sdk-source remote add origin https://github.com/aegorsuch/weartak-plugin-sdk.git
+      git -C .sdk-source -c credential.helper= fetch --depth 1 origin "$sdk_revision"
+      git -C .sdk-source checkout --detach FETCH_HEAD
+      test "$(git -C .sdk-source rev-parse HEAD)" = "$sdk_revision"
+      (
+        cd .sdk-source
+        bash ./gradlew --no-daemon testDebugUnitTest testReleaseUnitTest assembleDebug assembleRelease
+      )
+      mkdir -p app/libs
+      cp .sdk-source/build/outputs/aar/weartak-plugin-sdk-debug.aar app/libs/
+      cp .sdk-source/build/outputs/aar/weartak-plugin-sdk-release.aar app/libs/
+      bash ./gradlew --no-daemon \
+        :app:testDebugUnitTest :app:testReleaseUnitTest \
+        :app:assembleDebug :app:assembleRelease \
+        :app:lintDebug :app:lintRelease
+  artifacts:
+    when: always
+    expire_in: 14 days
+    reports:
+      junit:
+        - app/build/test-results/testDebugUnitTest/TEST-*.xml
+        - app/build/test-results/testReleaseUnitTest/TEST-*.xml
+        - .sdk-source/build/test-results/testDebugUnitTest/TEST-*.xml
+        - .sdk-source/build/test-results/testReleaseUnitTest/TEST-*.xml
+    paths:
+      - app/build/reports/tests/
+      - app/build/reports/lint-results-debug.html
+      - app/build/reports/lint-results-debug.xml
+      - app/build/reports/lint-results-release.html
+      - app/build/reports/lint-results-release.xml
+      - .sdk-source/build/reports/tests/
