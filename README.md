@@ -54,6 +54,52 @@ WearTAK SDK AAR dependencies must include the shared ACTION contract. No signing
 credentials are included; release signing may be configured externally using the existing
 `WEARTAK_SIGNING_PROPERTIES` convention.
 
+## TAK.gov Forge CI
+
+Canonical source is `weartak-plugins/weartak-plugin-gotenna` on TAK.gov Forge,
+default branch `main`. `.gitlab-ci.yml` verifies merge requests, branch pushes,
+tags and manual branch/tag pipelines. Push pipelines are suppressed when an open
+merge request already provides coverage. A Linux Docker/Kubernetes runner must
+be able to pull the digest-pinned Android 34 image and reach GitHub, Google's
+Android/Maven repositories, Maven Central and Gradle distribution services.
+The image supplies JDK 21 (supported by Gradle 8.10.2), Android SDK 34 and
+build-tools 34.0.0. Java/Kotlin bytecode still targets Java 17.
+
+Forge builds the same public, commit-pinned SDK as GitHub CI, verifies its checkout,
+runs SDK debug/release unit tests and assemblies, then stages both SDK AARs.
+It runs plugin debug/release unit tests, assemblies and lint. Dependency checkout
+or build failures fail the job; no prebuilt AAR fallback is used. Only JUnit,
+test and lint reports are retained for 14 days. **No APKs, signing files or SDK
+binaries are uploaded, and no release is published**, including on tag pipelines.
+
+### Production rolling release blocked
+
+The intended destination is the personal repository
+[`aegorsuch/weartak-plugin-gotenna`](https://github.com/aegorsuch/weartak-plugin-gotenna),
+not a company repository. No Forge publisher is enabled: existing release signing
+is optional and this checkout contains no production signing material or Forge
+signing setup. Without it, `assembleRelease` produces an unsigned APK, not a
+distributable production release. The GitHub debug prerelease described below
+is not a substitute.
+
+Before adding the protected-tag, fixed-tag rolling-release publisher, an operator
+must provision the existing signing contract on a protected runner:
+`WEARTAK_SIGNING_PROPERTIES` must reference a signing properties file (or an
+ignored root `signing.properties` must exist). It must provide
+`RELEASE_KEYSTORE_FILE`, `RELEASE_STORE_PASSWORD`, `RELEASE_KEY_ALIAS` and
+`RELEASE_KEY_PASSWORD`; corresponding `WEARTAK_RELEASE_*` environment values can
+override them, but the properties file must still exist. The keystore must use
+the production WearTAK host certificate because binding requires matching
+signatures. Neither credentials nor GitLab variables are created by this change.
+
+Publication also needs a trusted expected production certificate SHA-256 digest,
+protected source-tag policy and an authorized token scoped only to the personal
+destination. A future publisher must require successful verification, validate
+the APK signature and certificate against that trusted digest, reject debug or
+unsigned APKs, and serialize updates to the fixed rolling-release tag/assets.
+Until these prerequisites exist, Forge remains verification-only with no
+GitHub write access.
+
 ## GitHub CI and releases
 
 `.github/workflows/ci.yml` runs unit tests, debug assembly and Android lint for pushes,
