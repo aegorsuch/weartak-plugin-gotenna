@@ -9,6 +9,7 @@ workflow:
 stages:
   - verify
   - sign
+  - publish
 
 default:
   # Android 34 / build-tools 34.0.0; immutable multi-platform image.
@@ -17,6 +18,12 @@ default:
 
 variables:
   GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
+
+publisher_tests:
+  stage: verify
+  image: python:3.12-slim
+  script:
+    - python -m unittest discover -s ci/tests -v
 
 verify:
   stage: verify
@@ -114,6 +121,10 @@ main_release:
       cp "$apk" verified-release/weartak-plugin-gotenna-release.apk
       printf '%s\n' "$actual" > verified-release/signer-sha256.txt
       (cd verified-release && sha256sum weartak-plugin-gotenna-release.apk > SHA256SUMS)
+      cp app/build/outputs/apk/release/output-metadata.json verified-release/
+      printf '{"project_id":"%s","pipeline_id":"%s","pipeline_iid":%s,"source_sha":"%s","pipeline_url":"%s"}\n' \
+        "$CI_PROJECT_ID" "$CI_PIPELINE_ID" "$CI_PIPELINE_IID" "$CI_COMMIT_SHA" "$CI_PIPELINE_URL" \
+        > verified-release/provenance.json
       rm -f .production-signing/certificate.txt .production-signing/badging.txt
       echo "Production APK verified against Sextant/LACE signer."
   after_script:
@@ -124,3 +135,17 @@ main_release:
     expire_in: 30 days
     paths:
       - verified-release/
+
+publish_github_main:
+  stage: publish
+  image: python:3.12-slim
+  dependencies:
+    - main_release
+  resource_group: gotenna-github-main
+  interruptible: false
+  before_script:
+    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates
+  script:
+    - python ci/publish_github_release.py
+  rules:
+    - if: '$CI_SERVER_HOST == "git.tak.gov" && $CI_PROJECT_PATH == "weartak-plugins/weartak-plugin-gotenna" && $CI_PIPELINE_SOURCE == "push" && $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH && $CI_COMMIT_REF_PROTECTED == "true"'

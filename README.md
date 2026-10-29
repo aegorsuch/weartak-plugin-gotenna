@@ -70,7 +70,7 @@ runs SDK debug/release unit tests and assemblies, then stages both SDK AARs.
 It runs plugin debug/release unit tests, assemblies and lint. Dependency checkout
 or build failures fail the job; no prebuilt AAR fallback is used. Verification
 retains only JUnit, test and lint reports for 14 days. Signing files and SDK
-binaries are never uploaded. No GitHub release is published.
+binaries are never uploaded. Publisher policy tests run without credentials or network.
 
 ### Production signing (Sextant/LACE shared key)
 
@@ -94,21 +94,62 @@ properties values or passed as command-line arguments.
 ```
 
 The job also rejects a debuggable APK. Only after these checks pass does it
-retain `verified-release/` for 30 days: signed APK, SHA256SUMS and public signer
-fingerprint. This establishes signing compatibility with the reference production
+retain `verified-release/` for 30 days: signed APK, SHA256SUMS, public signer
+fingerprint, Gradle metadata and pipeline/source provenance. This establishes
+signing compatibility with the reference production
 certificate, not device installation, host version compatibility or radio support.
 Unprotected branches, merge requests and tags never run production signing.
 
-### GitHub rolling publisher remains disabled
+### Personal GitHub rolling release
 
 The intended destination is the personal repository
 [`aegorsuch/weartak-plugin-gotenna`](https://github.com/aegorsuch/weartak-plugin-gotenna),
-not a company repository. No Forge publisher is enabled. A future publisher needs
-separate authorization, a protected source policy, an existing fixed release tag,
-and an authorized token scoped only to the personal destination. It must consume
-only the verified production APK and serialize rolling-release updates. Forge has
-no configured GitHub write step. The GitHub debug prerelease below is not a
-production artifact substitute.
+not a company repository. `publish_github_main` runs after successful verification
+and signing, only for protected canonical `main` pushes. Its resource group
+`gotenna-github-main` serializes writers, and the job is not interruptible.
+It consumes only `main_release` artifacts, checks APK SHA-256, signer attestation,
+application/release metadata and exact source/pipeline provenance before any write.
+
+The publisher requires the fixed anchor tag
+`TAK.gov-Forge-CI-CD-Pipeline-Release` already present in the personal mirror.
+It never creates or moves tags. Source sync checks that the pipeline SHA remains
+canonical `main`, checks personal `main` ancestry and performs only a non-force
+fast-forward push. Diverged or stale source fails closed; histories are never
+rewritten. Authentication uses a temporary askpass helper referencing the
+environment, not embedded credentials or token-bearing URLs.
+
+The stable rolling release is titled **TAK.gov Forge CI/CD Pipeline Release
+(<version>-p<IID>)**, with asset `GoTenna-p<IID>.apk`; it does not change GitHub's
+Latest selection. Provenance identifies source SHA, pipeline URL, APK digest,
+version and signer. New releases stay draft until the uploaded APK is downloaded
+and size/hash verified. Existing assets remain until release confirmation; only
+older assets owned by this publisher are removed. Newer pipelines cannot be
+replaced by older ones. Human releases/assets and conflicting retries are refused.
+
+**Secure setup (operator only; this implementation changes no credentials/settings):**
+Reuse an already approved credential only if it is authorized for this exact
+personal repository. Provide it as `GOTENNA_GITHUB_TOKEN`, protected, masked,
+hidden, expansion disabled, environment scope `*`. A fine-grained PAT needs
+Contents read/write and Workflows write for source sync touching `.github/workflows/`,
+with only `aegorsuch/weartak-plugin-gotenna` selected. Project-specific
+`SEXTANT_GITHUB_TOKEN` and `LACE_GITHUB_TOKEN` are not inherited by GoTenna;
+their presence does not establish access to this repository. Do not copy secret
+values between projects or widen their access without approval.
+
+Create the fixed anchor only through an approved operator action on an existing,
+reviewed commit in the personal mirror. Its source archives describe that fixed
+anchor, not necessarily the APK source; release provenance is authoritative.
+Missing token/anchor or failed access checks fail publication explicitly. Once
+prerequisites exist, retry the latest protected-main publisher (older artifacts
+may be stale/expired), without bypassing signing or test gates.
+
+Run focused offline publisher tests:
+
+```powershell
+python -m unittest discover -s ci\tests -v
+```
+
+The GitHub debug prerelease below is not a production artifact substitute.
 
 ## GitHub CI and releases
 

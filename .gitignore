@@ -13,6 +13,8 @@ app/libs/*.aar
 .sdk-source/
 .production-signing/
 verified-release/
+__pycache__/
+*.pyc
 .DS_Store
 captures/
 .externalNativeBuild/
