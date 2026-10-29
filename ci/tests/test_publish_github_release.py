@@ -1,6 +1,7 @@
 import copy
 import hashlib
 import importlib.util
+import io
 import json
 from pathlib import Path
 import tempfile
@@ -229,6 +230,16 @@ class PublisherTests(unittest.TestCase):
         self.assertIsNone(result.get_header("Authorization"))
         with self.assertRaises(p.PublishError):
             handler.redirect_request(request, None, 302, "", {}, "http://storage.example/a")
+
+    def test_api_repository_url_has_no_trailing_slash(self):
+        api = p.GitHub("fixture")
+        for path in ("", "releases/tags/" + p.TAG):
+            with patch.object(api.opener, "open", return_value=io.BytesIO(b'{}')) as call:
+                api.request("GET", path)
+                expected = "https://api.github.com/repos/" + p.REPO
+                if path:
+                    expected += "/" + path
+                self.assertEqual(call.call_args.args[0].full_url, expected)
 
     def test_source_sync_only_fast_forwards_and_cleans_helper(self):
         calls = []
