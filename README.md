@@ -2,7 +2,7 @@
 
 WearTAK plugin foundation for future goTenna radio integration. The app implements the WearTAK
 plugin binding contract and reports radio support as unavailable. It does not scan for, pair with,
-or send data to radios. Open **Plugins > GoTenna** in WearTAK for its hosted status page;
+or send data to radios. Open **Plugins > goTenna** in WearTAK for its hosted status page;
 the plugin does not expose a separate launcher activity.
 
 ## Hosted WearTAK UI
