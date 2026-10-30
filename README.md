@@ -122,11 +122,10 @@ application/release metadata and exact source/pipeline provenance before any wri
 
 The publisher requires the fixed anchor tag
 `TAK.gov-Forge-CI-CD-Pipeline-Release` already present in the personal mirror.
-It never creates or moves tags. Source sync checks that the pipeline SHA remains
-canonical `main`, checks personal `main` ancestry and performs only a non-force
-fast-forward push. Diverged or stale source fails closed; histories are never
-rewritten. Authentication uses a temporary askpass helper referencing the
-environment, not embedded credentials or token-bearing URLs.
+It never creates or moves tags or pushes source commits. Like the LACE publisher,
+it publishes only the verified `main_release` APK; source mirroring is separate.
+The release identifies the authoritative canonical source commit even when that
+commit has not yet been mirrored to GitHub.
 
 The stable rolling release is titled **TAK.gov Forge CI/CD Pipeline Release
 (<version>-p<IID>)**, with asset `GoTenna-p<IID>.apk`; it does not change GitHub's
@@ -140,7 +139,7 @@ replaced by older ones. Human releases/assets and conflicting retries are refuse
 Reuse an already approved credential only if it is authorized for this exact
 personal repository. Provide it as `GOTENNA_GITHUB_TOKEN`, protected, masked,
 hidden, expansion disabled, environment scope `*`. A fine-grained PAT needs
-Contents read/write and Workflows write for source sync touching `.github/workflows/`,
+Contents read/write for release publication,
 with only `aegorsuch/weartak-plugin-gotenna` selected. Project-specific
 `SEXTANT_GITHUB_TOKEN` and `LACE_GITHUB_TOKEN` are not inherited by GoTenna;
 their presence does not establish access to this repository. Do not copy secret

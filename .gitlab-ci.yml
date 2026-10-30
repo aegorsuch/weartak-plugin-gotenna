@@ -158,8 +158,6 @@ publish_github_main:
     - main_release
   resource_group: gotenna-github-main
   interruptible: false
-  before_script:
-    - apt-get update -qq && apt-get install -y -qq --no-install-recommends git ca-certificates
   script:
     - python ci/publish_github_release.py
   rules:

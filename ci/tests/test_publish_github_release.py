@@ -102,13 +102,12 @@ class PublisherTests(unittest.TestCase):
             "elements": [{"versionCode": 1, "versionName": "0.1.0", "outputFile": "app-release.apk"}],
         }
         self.write_metadata()
-        self.sync = unittest.mock.Mock()
 
     def write_metadata(self):
         (self.output / "output-metadata.json").write_text(json.dumps(self.metadata))
 
     def publish(self, api):
-        p.publish(api, self.state, *p.artifact(self.root, self.state), self.sync)
+        p.publish(api, self.state, *p.artifact(self.root, self.state))
 
     def test_required_configuration(self):
         env = environment()
@@ -134,7 +133,6 @@ class PublisherTests(unittest.TestCase):
         self.assertFalse(api.release["prerelease"])
         self.assertEqual(api.release["make_latest"], "false")
         self.assertIn(self.state["source_sha"], api.release["body"])
-        self.sync.assert_called_once_with(self.state)
         methods = [c[0] for c in api.calls]
         self.assertLess(methods.index("DOWNLOAD"), methods.index("PATCH"))
         self.publish(api)
@@ -148,13 +146,12 @@ class PublisherTests(unittest.TestCase):
         self.assertLess(api.calls.index(("GET", "releases/1")),
                         api.calls.index(("DELETE", "releases/assets/2")))
 
-    def test_older_pipeline_does_not_sync_or_write(self):
+    def test_older_pipeline_does_not_write(self):
         api = API(dict(self.state, pipeline_iid=13))
         self.publish(api)
-        self.sync.assert_not_called()
         self.assertTrue(all(c[0] == "GET" for c in api.calls))
 
-    def test_conflicting_retry_and_unmanaged_release_fail_before_sync(self):
+    def test_conflicting_retry_and_unmanaged_release_fail_before_writes(self):
         for change in (
             {"source_sha": "f" * 40}, {"sha256": "wrong"}, {"project_id": "other"},
         ):
@@ -165,7 +162,6 @@ class PublisherTests(unittest.TestCase):
         api.release["body"] = "human release"
         with self.assertRaises(p.PublishError):
             self.publish(api)
-        self.sync.assert_not_called()
 
     def test_missing_anchor_or_wrong_repository_never_writes(self):
         for change in ({"full_name": "company/repo"}, {"archived": True}, {"disabled": True}):
@@ -178,18 +174,14 @@ class PublisherTests(unittest.TestCase):
         api.tag = False
         with self.assertRaises(p.PublishError):
             self.publish(api)
-        self.sync.assert_not_called()
 
     def test_failures_preserve_previous_assets(self):
-        for stage in ("download", "upload", "patch", "confirm", "sync"):
+        for stage in ("download", "upload", "patch", "confirm"):
             api = API(dict(self.state, pipeline_iid=11))
             old = asset(11, 2)
             api.items = [old]
-            self.sync.reset_mock(side_effect=True)
             if stage == "download":
                 api.bad_download = True
-            elif stage == "sync":
-                self.sync.side_effect = p.PublishError("Diverged")
             else:
                 api.failure = lambda method, path, stage=stage: (
                     (stage == "upload" and method == "POST" and "/assets?" in path)
@@ -241,52 +233,12 @@ class PublisherTests(unittest.TestCase):
                     expected += "/" + path
                 self.assertEqual(call.call_args.args[0].full_url, expected)
 
-    def test_source_sync_only_fast_forwards_and_cleans_helper(self):
-        calls = []
-
-        def fake_git(*args, env=None):
-            calls.append(args)
-            if args[0] == "ls-remote":
-                return self.state["source_sha"] + "\trefs/heads/main"
-            if args == ("rev-parse", "HEAD"):
-                return self.state["source_sha"]
-            if args == ("rev-parse", "--is-shallow-repository"):
-                return "false"
-            if "push" in args:
-                self.assertTrue(Path(env["GIT_ASKPASS"]).is_file())
-            return ""
-
-        with patch.object(p, "git", side_effect=fake_git):
-            p.sync_source(self.state, "fixture")
-        self.assertTrue(any(c[0] == "merge-base" for c in calls))
-        self.assertFalse(any("--force" in c or "--force-with-lease" in c for c in calls))
-        self.assertTrue(any(self.state["source_sha"] + ":refs/heads/main" in c for c in calls))
-
-    def test_diverged_source_never_pushes(self):
-        calls = []
-
-        def fake_git(*args, env=None):
-            calls.append(args)
-            if args[0] == "ls-remote":
-                return self.state["source_sha"] + "\trefs/heads/main"
-            if args == ("rev-parse", "HEAD"):
-                return self.state["source_sha"]
-            if args == ("rev-parse", "--is-shallow-repository"):
-                return "false"
-            if args[0] == "merge-base":
-                raise p.PublishError("Diverged")
-            return ""
-
-        with patch.object(p, "git", side_effect=fake_git):
-            with self.assertRaises(p.PublishError):
-                p.sync_source(self.state, "fixture")
-        self.assertFalse(any("push" in c for c in calls))
-
-    def test_stale_source_never_pushes(self):
-        with patch.object(p, "git", return_value="b" * 40 + "\trefs/heads/main") as git:
-            with self.assertRaisesRegex(p.PublishError, "Stale"):
-                p.sync_source(self.state, "fixture")
-            self.assertEqual(git.call_count, 1)
+    def test_publication_never_runs_git_or_changes_refs(self):
+        api = API()
+        with patch("subprocess.run", side_effect=AssertionError("No source synchronization")):
+            self.publish(api)
+        self.assertFalse(any("/git/" in path for method, path in api.calls if method != "GET"))
+        self.assertIn("may not yet be mirrored", api.release["body"])
 
 
 if __name__ == "__main__":
