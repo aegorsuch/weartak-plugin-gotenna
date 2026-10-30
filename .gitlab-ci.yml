@@ -1,3 +1,10 @@
+include:
+  - project: devsecops/gitlab-ci-common
+    ref: master
+    file: /template/artifactory_token_service.yml
+
+before_script: []
+
 workflow:
   rules:
     - if: '$CI_PIPELINE_SOURCE == "merge_request_event"'
@@ -19,6 +26,12 @@ default:
 variables:
   GRADLE_USER_HOME: "$CI_PROJECT_DIR/.gradle"
 
+.artifactory_credentials:
+  extends: .artifactory_service_create_token_bash
+  before_script:
+    - !reference [.artifactory_service_create_token_bash, before_script]
+    - export ARTIFACTORY_USER="$GITLAB_USER_EMAIL" ARTIFACTORY_PASSWORD="$CI_JOB_ARTIFACTORY_TOKEN"
+
 publisher_tests:
   stage: verify
   image: python:3.12-slim
@@ -26,6 +39,7 @@ publisher_tests:
     - python -m unittest discover -s ci/tests -v
 
 verify:
+  extends: .artifactory_credentials
   stage: verify
   timeout: 45 minutes
   script:
@@ -67,6 +81,7 @@ verify:
       - .sdk-source/build/reports/tests/
 
 main_release:
+  extends: .artifactory_credentials
   stage: sign
   timeout: 45 minutes
   rules:

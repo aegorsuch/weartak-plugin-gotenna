@@ -72,6 +72,16 @@ or build failures fail the job; no prebuilt AAR fallback is used. Verification
 retains only JUnit, test and lint reports for 14 days. Signing files and SDK
 binaries are never uploaded. Publisher policy tests run without credentials or network.
 
+Gradle jobs use the shared `devsecops/gitlab-ci-common` Artifactory token service
+to exchange the job identity for a transient token. The existing root Android image
+uses `.artifactory_service_create_token_bash`; no launcher init script is installed.
+Plugin settings put TAK Artifactory first when credentials are available, and
+Robolectric uses the same repository inside its test JVM. The SDK checkout must
+also provide compatible repository settings; plugin settings do not configure it.
+Logs should report `Token exchange successful` and `takArtifactory for plugins: enabled`
+without printing credentials. If token exchange reports a first-login requirement,
+sign in to `https://artifacts.tak.gov` once and retry the failed job.
+
 ### Production signing (Sextant/LACE shared key)
 
 After verification passes, `main_release` runs only on protected default-branch
