@@ -5,12 +5,12 @@ No vendor goTenna binaries belong here.
 
 Source: <https://git.tak.gov/weartak-plugins/weartak-plugin-sdk.git>
 
-Validated ACTION + v3-compatible SDK source is published at
-[`3f924ee6aaface69d9b10e1981f390ee9502b945`](https://github.com/aegorsuch/weartak-plugin-sdk/commit/3f924ee6aaface69d9b10e1981f390ee9502b945).
+Validated ACTION + v3-compatible SDK source with Artifactory repository settings is published at
+[`e2ee52402cf5738e86e43c3f6f1ce1594bd6e5ec`](https://github.com/aegorsuch/weartak-plugin-sdk/commit/e2ee52402cf5738e86e43c3f6f1ce1594bd6e5ec).
 It was merged through canonical
-[MR 2](https://git.tak.gov/weartak-plugins/weartak-plugin-sdk/-/merge_requests/2).
-Local debug/release validation used AARs from source commit
-`a4f784338efb1d8eb048591a4a3f57b3f7e8ffa3`; its tree is identical to this merge commit.
+[MR 4](https://git.tak.gov/weartak-plugins/weartak-plugin-sdk/-/merge_requests/4).
+Its tree `19874cd3b54bb080b037a7392aa1bd15f760daa6` matches tested source
+`d6a7dc2afb8e54a6178e91d91e61162e756e2dc6`; SDK pipeline 1821655 passed.
 
 CI defaults to the verified repository/revision below. Optional repository variables
 `WEARTAK_SDK_REPOSITORY` (GitHub `owner/repo`
@@ -26,7 +26,7 @@ Built-in CI defaults (no repository variable setup required for the public mirro
 
 ```text
 WEARTAK_SDK_REPOSITORY=aegorsuch/weartak-plugin-sdk
-WEARTAK_SDK_REVISION=3f924ee6aaface69d9b10e1981f390ee9502b945
+WEARTAK_SDK_REVISION=e2ee52402cf5738e86e43c3f6f1ce1594bd6e5ec
 ```
 
 Overrides are validated and used consistently by checkout. No remote variables were changed.

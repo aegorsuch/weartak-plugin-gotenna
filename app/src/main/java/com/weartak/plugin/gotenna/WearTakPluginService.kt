@@ -48,7 +48,7 @@ class WearTakPluginService : Service() {
 
         override fun getPluginInfo() = PluginInfoParcel(
             pluginId = BuildConfig.APPLICATION_ID,
-            displayName = "GoTenna",
+            displayName = "goTenna",
             versionName = BuildConfig.VERSION_NAME,
             packageName = BuildConfig.APPLICATION_ID,
             description = "WearTAK plugin integration foundation for goTenna radios.",

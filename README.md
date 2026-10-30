@@ -2,7 +2,7 @@
 
 WearTAK plugin foundation for future goTenna radio integration. The app implements the WearTAK
 plugin binding contract and reports radio support as unavailable. It does not scan for, pair with,
-or send data to radios. Open **Plugins > GoTenna** in WearTAK for its hosted status page;
+or send data to radios. Open **Plugins > goTenna** in WearTAK for its hosted status page;
 the plugin does not expose a separate launcher activity.
 
 ## Hosted WearTAK UI
@@ -71,6 +71,16 @@ It runs plugin debug/release unit tests, assemblies and lint. Dependency checkou
 or build failures fail the job; no prebuilt AAR fallback is used. Verification
 retains only JUnit, test and lint reports for 14 days. Signing files and SDK
 binaries are never uploaded. Publisher policy tests run without credentials or network.
+
+Gradle jobs use the shared `devsecops/gitlab-ci-common` Artifactory token service
+to exchange the job identity for a transient token. The existing root Android image
+uses `.artifactory_service_create_token_bash`; no launcher init script is installed.
+Plugin settings put TAK Artifactory first when credentials are available, and
+Robolectric uses the same repository inside its test JVM. The SDK checkout must
+also provide compatible repository settings; plugin settings do not configure it.
+Logs should report `Token exchange successful` and `takArtifactory for plugins: enabled`
+without printing credentials. If token exchange reports a first-login requirement,
+sign in to `https://artifacts.tak.gov` once and retry the failed job.
 
 ### Production signing (Sextant/LACE shared key)
 
@@ -173,10 +183,10 @@ The host-compatible ACTION SDK is now published; use these verified values:
 
 ```text
 WEARTAK_SDK_REPOSITORY=aegorsuch/weartak-plugin-sdk
-WEARTAK_SDK_REVISION=3f924ee6aaface69d9b10e1981f390ee9502b945
+WEARTAK_SDK_REVISION=e2ee52402cf5738e86e43c3f6f1ce1594bd6e5ec
 ```
 
-See the [published SDK merge commit](https://github.com/aegorsuch/weartak-plugin-sdk/commit/3f924ee6aaface69d9b10e1981f390ee9502b945).
+See the [published SDK merge commit](https://github.com/aegorsuch/weartak-plugin-sdk/commit/e2ee52402cf5738e86e43c3f6f1ce1594bd6e5ec).
 Remote repository variables have not been set by this implementation.
 
 The attached APK is explicitly development-only, signed with a CI-generated Android debug

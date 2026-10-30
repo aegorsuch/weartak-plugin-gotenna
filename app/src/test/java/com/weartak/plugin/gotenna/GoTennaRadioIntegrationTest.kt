@@ -44,6 +44,7 @@ class GoTennaRadioIntegrationTest {
             val plugin = IWearTakPlugin.Stub.asInterface(service.onBind(Intent()))
 
             assertNotNull(plugin.pluginInfo)
+            assertEquals("goTenna", plugin.pluginInfo.displayName)
             assertTrue(plugin.capabilities.hostedMainUi)
             assertFalse(plugin.capabilities.externalMainActivity)
             assertFalse(plugin.capabilities.deviceIntegration)
