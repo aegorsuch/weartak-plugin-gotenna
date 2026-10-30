@@ -183,10 +183,10 @@ The host-compatible ACTION SDK is now published; use these verified values:
 
 ```text
 WEARTAK_SDK_REPOSITORY=aegorsuch/weartak-plugin-sdk
-WEARTAK_SDK_REVISION=3f924ee6aaface69d9b10e1981f390ee9502b945
+WEARTAK_SDK_REVISION=e2ee52402cf5738e86e43c3f6f1ce1594bd6e5ec
 ```
 
-See the [published SDK merge commit](https://github.com/aegorsuch/weartak-plugin-sdk/commit/3f924ee6aaface69d9b10e1981f390ee9502b945).
+See the [published SDK merge commit](https://github.com/aegorsuch/weartak-plugin-sdk/commit/e2ee52402cf5738e86e43c3f6f1ce1594bd6e5ec).
 Remote repository variables have not been set by this implementation.
 
 The attached APK is explicitly development-only, signed with a CI-generated Android debug

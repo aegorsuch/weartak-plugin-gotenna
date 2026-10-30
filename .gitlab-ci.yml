@@ -46,7 +46,7 @@ verify:
     - &verify_build |
       set -euo pipefail
       java -version
-      sdk_revision=3f924ee6aaface69d9b10e1981f390ee9502b945
+      sdk_revision=e2ee52402cf5738e86e43c3f6f1ce1594bd6e5ec
       git init .sdk-source
       git -C .sdk-source remote add origin https://github.com/aegorsuch/weartak-plugin-sdk.git
       git -C .sdk-source -c credential.helper= fetch --depth 1 origin "$sdk_revision"

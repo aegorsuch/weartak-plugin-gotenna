@@ -24,7 +24,7 @@ jobs:
         id: sdk
         env:
           SDK_REPOSITORY: ${{ vars.WEARTAK_SDK_REPOSITORY || 'aegorsuch/weartak-plugin-sdk' }}
-          SDK_REF: ${{ vars.WEARTAK_SDK_REVISION || '3f924ee6aaface69d9b10e1981f390ee9502b945' }}
+          SDK_REF: ${{ vars.WEARTAK_SDK_REVISION || 'e2ee52402cf5738e86e43c3f6f1ce1594bd6e5ec' }}
         run: |
           set -euo pipefail
           if [[ -z "$SDK_REPOSITORY" || -z "$SDK_REF" ]]; then
