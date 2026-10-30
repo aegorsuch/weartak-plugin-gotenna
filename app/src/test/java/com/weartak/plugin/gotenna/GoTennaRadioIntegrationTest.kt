@@ -67,6 +67,16 @@ class GoTennaRadioIntegrationTest {
     }
 
     @Test
+    fun applicationUsesGoTennaMenuNameAndOfficialLogoIcon() {
+        val app = org.robolectric.RuntimeEnvironment.getApplication()
+        val info = app.packageManager.getApplicationInfo(BuildConfig.APPLICATION_ID, 0)
+
+        assertEquals("goTenna", app.packageManager.getApplicationLabel(info).toString())
+        assertEquals(R.drawable.gotenna_logo, info.icon)
+        assertNotNull(info.loadIcon(app.packageManager))
+    }
+
+    @Test
     fun v3InitializationPreservesHostedStatusWithoutEnablingRadioOrPcm() {
         withPlugin { plugin ->
             plugin.initializePluginV3(null, null, null, null)
