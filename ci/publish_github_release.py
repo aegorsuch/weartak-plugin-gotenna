@@ -16,7 +16,8 @@ TAG = "TAK.gov-Forge-CI-CD-Pipeline-Release"
 TITLE = "TAK.gov Forge CI/CD Pipeline Release"
 MARKER = "gotenna-rolling-v1"
 SIGNER = "1579b600cd84e619e76a91c2db6b031938c999bc2aad926b9a51ec2b166d348d"
-ASSET = re.compile(r"GoTenna-p([1-9][0-9]*)\.apk")
+ASSET = re.compile(r"goTenna-[0-9A-Za-z._-]*-p([1-9][0-9]*)\.apk")
+LEGACY_ASSET = re.compile(r"GoTenna-p([1-9][0-9]*)\.apk")
 
 
 class PublishError(Exception):
@@ -139,13 +140,15 @@ def artifact(root, state):
     metadata = json.loads((output / "output-metadata.json").read_text())
     elements = metadata.get("elements", [])
     if (metadata.get("applicationId") != "com.weartak.plugin.gotenna"
-            or metadata.get("variantName") != "release" or len(elements) != 1
-            or elements[0].get("outputFile") != "app-release.apk"):
+            or metadata.get("variantName") != "release" or len(elements) != 1):
         raise PublishError("Unexpected Gradle release metadata.")
     version, code = elements[0].get("versionName"), elements[0].get("versionCode")
     if (not isinstance(version, str) or not re.fullmatch(r"[0-9A-Za-z.+_-]+", version)
             or type(code) is not int or code <= 0):
         raise PublishError("Invalid APK version.")
+    base_version = version.split("-p", 1)[0]
+    if elements[0].get("outputFile") != f"goTenna-{base_version}-{code}-release.apk":
+        raise PublishError("Unexpected Gradle APK filename.")
     return apk, digest, version, code
 
 
@@ -162,10 +165,17 @@ def release_state(release, project_id):
 
 
 def asset_pipeline(asset):
-    match = ASSET.fullmatch(asset.get("name", ""))
+    name = asset.get("name", "")
+    match = ASSET.fullmatch(name) or LEGACY_ASSET.fullmatch(name)
     if match and asset.get("label") == asset["name"]:
         return int(match[1])
     return None
+
+
+def display_version(version, pipeline_iid):
+    short = version.split("+", 1)[0]
+    suffix = f"-p{pipeline_iid}"
+    return short if short.endswith(suffix) else short + suffix
 
 
 def publish(api, state, apk, digest, version, code):
@@ -186,7 +196,8 @@ def publish(api, state, apk, digest, version, code):
                      or previous.get("sha256") != digest)):
             raise PublishError("Conflicting retry source/artifact.")
     state = dict(state, sha256=digest)
-    title = f"{TITLE} ({version}-p{state['pipeline_iid']})"
+    build = display_version(version, state["pipeline_iid"])
+    title = f"{TITLE} ({build})"
     body = (
         "Production-signed GoTenna WearTAK plugin. Radio transport remains unavailable.\n\n"
         f"Version: {version} (versionCode {code})\n\n"
@@ -204,7 +215,7 @@ def publish(api, state, apk, digest, version, code):
         })
     release_id = release["id"]
     assets = api.assets(release_id)
-    name = f"GoTenna-p{state['pipeline_iid']}.apk"
+    name = f"goTenna-{build}.apk"
     existing = [item for item in assets if item["name"] == name]
     if len(existing) > 1 or (existing and asset_pipeline(existing[0]) is None):
         raise PublishError("Unmanaged/ambiguous asset collision.")
@@ -221,7 +232,7 @@ def publish(api, state, apk, digest, version, code):
         raise PublishError("Uploaded APK verification failed; previous assets retained.")
     api.request("PATCH", f"releases/{release_id}", {
         "name": title, "body": body, "draft": False,
-        "prerelease": False, "make_latest": "false",
+        "prerelease": False, "make_latest": "true",
     })
     confirmed = api.request("GET", f"releases/{release_id}")
     if (confirmed.get("draft") or confirmed.get("name") != title
