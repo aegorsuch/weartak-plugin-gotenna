@@ -30,7 +30,7 @@ def environment():
 
 
 def asset(iid, asset_id=1):
-    name = f"GoTenna-p{iid}.apk"
+    name = f"goTenna-5.8.4-p{iid}.apk"
     return {"id": asset_id, "name": name, "label": name, "state": "uploaded", "size": 3}
 
 
@@ -99,7 +99,10 @@ class PublisherTests(unittest.TestCase):
         (self.output / "provenance.json").write_text(json.dumps(self.state))
         self.metadata = {
             "applicationId": "com.weartak.plugin.gotenna", "variantName": "release",
-            "elements": [{"versionCode": 1, "versionName": "0.1.0", "outputFile": "app-release.apk"}],
+            "elements": [{
+                "versionCode": 5840012, "versionName": "5.8.4-p12+aaaaaaaa",
+                "outputFile": "goTenna-5.8.4-5840012-release.apk",
+            }],
         }
         self.write_metadata()
 
@@ -131,7 +134,9 @@ class PublisherTests(unittest.TestCase):
         self.publish(api)
         self.assertFalse(api.release["draft"])
         self.assertFalse(api.release["prerelease"])
-        self.assertEqual(api.release["make_latest"], "false")
+        self.assertEqual(api.release["make_latest"], "true")
+        self.assertEqual(api.release["name"], f"{p.TITLE} (5.8.4-p12)")
+        self.assertEqual(api.items[0]["name"], "goTenna-5.8.4-p12.apk")
         self.assertIn(self.state["source_sha"], api.release["body"])
         methods = [c[0] for c in api.calls]
         self.assertLess(methods.index("DOWNLOAD"), methods.index("PATCH"))
@@ -213,6 +218,25 @@ class PublisherTests(unittest.TestCase):
         self.write_metadata()
         with self.assertRaises(p.PublishError):
             p.artifact(self.root, self.state)
+
+    def test_wrong_archive_filename_rejected(self):
+        self.metadata["elements"][0]["outputFile"] = "app-release.apk"
+        self.write_metadata()
+        with self.assertRaises(p.PublishError):
+            p.artifact(self.root, self.state)
+
+    def test_display_version_drops_sha_without_duplicate_pipeline(self):
+        self.assertEqual(p.display_version("5.8.4-p12+aaaaaaaa", 12), "5.8.4-p12")
+        self.assertEqual(p.display_version("5.8.4", 12), "5.8.4-p12")
+
+    def test_legacy_assets_still_cleaned_after_confirmation(self):
+        api = API(dict(self.state, pipeline_iid=11))
+        old = dict(asset(11, 2), name="GoTenna-p11.apk", label="GoTenna-p11.apk")
+        api.items = [old]
+        self.publish(api)
+        self.assertNotIn(old, api.items)
+        self.assertLess(api.calls.index(("GET", "releases/1")),
+                        api.calls.index(("DELETE", "releases/assets/2")))
 
     def test_redirect_strips_authentication_and_rejects_http(self):
         request = urllib.request.Request("https://api.github.com/asset",

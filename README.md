@@ -56,6 +56,11 @@ WearTAK SDK AAR dependencies must include the shared ACTION contract. No signing
 credentials are included; release signing may be configured externally using the existing
 `WEARTAK_SIGNING_PROPERTIES` convention.
 
+Versioning matches WearTAK (WEARTAK-239): local builds use versionName `5.8.4`
+and versionCode `584`. Forge builds use `5.8.4-p<IID>+<sha>` and
+`584 * 10000 + CI_PIPELINE_IID`, with IID restricted to `0..9999`.
+APK archive names use `goTenna-5.8.4-<versionCode>`.
+
 ## TAK.gov Forge CI
 
 Canonical source is `weartak-plugins/weartak-plugin-gotenna` on TAK.gov Forge,
@@ -130,8 +135,9 @@ The release identifies the authoritative canonical source commit even when that
 commit has not yet been mirrored to GitHub.
 
 The stable rolling release is titled **TAK.gov Forge CI/CD Pipeline Release
-(<version>-p<IID>)**, with asset `GoTenna-p<IID>.apk`; it does not change GitHub's
-Latest selection. Provenance identifies source SHA, pipeline URL, APK digest,
+(5.8.4-p<IID>)**, with asset `goTenna-5.8.4-p<IID>.apk`, marked Latest.
+Display names omit commit metadata without duplicating the pipeline suffix.
+Provenance identifies source SHA, pipeline URL, APK digest,
 version and signer. New releases stay draft until the uploaded APK is downloaded
 and size/hash verified. Existing assets remain until release confirmation; only
 older assets owned by this publisher are removed. Newer pipelines cannot be

@@ -95,8 +95,11 @@ jobs:
           if-no-files-found: warn
       - name: Stage debug APK
         run: |
+          set -euo pipefail
           mkdir -p dist
-          cp app/build/outputs/apk/debug/app-debug.apk dist/weartak-plugin-gotenna-debug.apk
+          apks=(app/build/outputs/apk/debug/*.apk)
+          test "${#apks[@]}" -eq 1
+          cp "${apks[0]}" dist/weartak-plugin-gotenna-debug.apk
           (cd dist && sha256sum weartak-plugin-gotenna-debug.apk > SHA256SUMS)
       - name: Upload verified debug APK
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
