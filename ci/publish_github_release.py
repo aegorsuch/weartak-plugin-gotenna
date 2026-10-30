@@ -1,13 +1,11 @@
-"""Publish verified protected-main APKs to the approved personal mirror only."""
+"""Publish verified protected-main APKs only; no source or tag synchronization."""
 
 import hashlib
 import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
-import tempfile
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -163,41 +161,6 @@ def release_state(release, project_id):
     return previous
 
 
-def git(*args, env=None):
-    result = subprocess.run(
-        ["git", *args], env=env, capture_output=True, text=True, check=False
-    )
-    if result.returncode:
-        raise PublishError("Non-force source synchronization failed; inspect branch ancestry/access.")
-    return result.stdout.strip()
-
-
-def sync_source(state, token):
-    # Never rewrite personal history or create/move release tags.
-    source = "origin"
-    target = f"https://github.com/{REPO}.git"
-    latest = git("ls-remote", source, "refs/heads/main").split()
-    if not latest or latest[0] != state["source_sha"]:
-        raise PublishError("Stale pipeline: canonical main has advanced.")
-    if git("rev-parse", "HEAD") != state["source_sha"]:
-        raise PublishError("Checkout does not match artifact source.")
-    if git("rev-parse", "--is-shallow-repository") == "true":
-        git("fetch", "--unshallow", source, "main")
-    with tempfile.TemporaryDirectory(prefix="gotenna-askpass-") as directory:
-        helper = Path(directory) / "askpass.sh"
-        helper.write_text(
-            '#!/bin/sh\ncase "$1" in *Username*) printf "%s\\n" x-access-token;; '
-            '*) printf "%s\\n" "$GOTENNA_GITHUB_TOKEN";; esac\n'
-        )
-        helper.chmod(0o700)
-        env = dict(os.environ, GIT_ASKPASS=str(helper), GIT_TERMINAL_PROMPT="0",
-                   GOTENNA_GITHUB_TOKEN=token)
-        git("-c", "credential.helper=", "fetch", target, "refs/heads/main", env=env)
-        git("merge-base", "--is-ancestor", "FETCH_HEAD", state["source_sha"], env=env)
-        git("-c", "credential.helper=", "push", target,
-            f"{state['source_sha']}:refs/heads/main", env=env)
-
-
 def asset_pipeline(asset):
     match = ASSET.fullmatch(asset.get("name", ""))
     if match and asset.get("label") == asset["name"]:
@@ -205,7 +168,7 @@ def asset_pipeline(asset):
     return None
 
 
-def publish(api, state, apk, digest, version, code, sync):
+def publish(api, state, apk, digest, version, code):
     repository = api.request("GET", "")
     if (repository.get("full_name") != REPO or repository.get("archived") is not False
             or repository.get("disabled") is not False):
@@ -222,7 +185,6 @@ def publish(api, state, apk, digest, version, code, sync):
                 and (previous.get("source_sha") != state["source_sha"]
                      or previous.get("sha256") != digest)):
             raise PublishError("Conflicting retry source/artifact.")
-    sync(state)
     state = dict(state, sha256=digest)
     title = f"{TITLE} ({version}-p{state['pipeline_iid']})"
     body = (
@@ -231,6 +193,7 @@ def publish(api, state, apk, digest, version, code, sync):
         f"Pipeline: {state['pipeline_url']}\n\nSource: `{state['source_sha']}`\n\n"
         f"APK SHA-256: `{digest}`\n\nSigner SHA-256: `{SIGNER}`\n\n"
         "Install the APK asset, not the fixed-anchor source archives. "
+        "The source commit above is authoritative and may not yet be mirrored to GitHub. "
         "Device/host compatibility has not been tested by this pipeline.\n\n"
         f"<!-- {MARKER} {json.dumps(state, sort_keys=True)} -->"
     )
@@ -278,8 +241,7 @@ def main():
         state = configuration(os.environ)
         apk, digest, version, code = artifact(Path.cwd(), state)
         token = os.environ["GOTENNA_GITHUB_TOKEN"]
-        publish(GitHub(token), state, apk, digest, version, code,
-                lambda value: sync_source(value, token))
+        publish(GitHub(token), state, apk, digest, version, code)
     except (PublishError, OSError, ValueError, KeyError, TypeError) as error:
         message = str(error) if isinstance(error, PublishError) else type(error).__name__
         print(f"ERROR: {message} Publication incomplete; see README.md.", file=sys.stderr)
